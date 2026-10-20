@@ -1,6 +1,6 @@
 # badapplecli 🍎
 
-Play **Bad Apple!!** in your terminal as crisp black-and-white half-block animation, with music when `ffplay` is available. Python only; no C# or Java.
+Play **Bad Apple!!** in your terminal as crisp black-and-white half-block animation, with music when `ffplay` is available.
 
 ## Requirements
 
