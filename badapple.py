@@ -58,20 +58,32 @@ def video_dimensions(columns: int, lines: int, requested_width: int = 0) -> tupl
     return width, pixel_height
 
 
+_COLOR_CACHE: dict[tuple[int, int], str] = {}
+
+
 def render_frame(frame: bytes, width: int, height: int, threshold: int, invert: bool) -> str:
-    """Render two grayscale pixels per terminal row with Unicode half blocks."""
-    blocks = (" ", "▀", "▄", "█")
+    """Render grayscale with truecolor: top pixel = foreground, bottom = background."""
     output = []
     for y in range(0, height, 2):
         top = y * width
         bottom = top + width
         line = []
+        prev = None
         for x in range(width):
-            upper = frame[top + x] >= threshold
-            lower = frame[bottom + x] >= threshold
+            u = frame[top + x]
+            l = frame[bottom + x]
             if invert:
-                upper, lower = not upper, not lower
-            line.append(blocks[int(upper) | (int(lower) << 1)])
+                u, l = 255 - u, 255 - l
+            key = (u, l)
+            if key != prev:                      # 색이 바뀔 때만 이스케이프 출력
+                code = _COLOR_CACHE.get(key)
+                if code is None:
+                    code = f"\x1b[38;2;{u};{u};{u};48;2;{l};{l};{l}m"
+                    _COLOR_CACHE[key] = code
+                line.append(code)
+                prev = key
+            line.append("▀")
+        line.append("\x1b[0m")
         output.append("".join(line))
     return "\x1b[H" + "\n".join(output)
 
