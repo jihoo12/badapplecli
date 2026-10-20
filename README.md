@@ -1,12 +1,12 @@
 # badapplecli 🍎
 
-Play **Bad Apple!!** in your terminal as crisp black-and-white half-block animation, with music when `ffplay` is available.
+Play **Bad Apple!!** in your terminal as smooth, anti-aliased grayscale half-block animation, with music when `ffplay` is available.
 
 ## Requirements
 
 - Python **3.9+** (no pip packages)
 - **FFmpeg** available on `PATH` (`ffmpeg` required; `ffplay` optional for audio)
-- A terminal supporting UTF-8 and ANSI escapes (Windows Terminal, macOS Terminal, most Linux terminals)
+- A terminal supporting UTF-8 and **24-bit truecolor** ANSI escapes (Windows Terminal, iTerm2, kitty, Alacritty, GNOME Terminal, and most modern terminals; legacy `cmd.exe` may not work)
 - Internet access for the first run, or provide a local video with `--video`
 
 ## Run
@@ -27,7 +27,7 @@ Press **q**, **Esc**, or **Ctrl+C** to stop.
 
 ```bash
 python badapple.py --no-audio                 # Silent video
-python badapple.py --fps 30 --width 100       # 30 FPS, max 100 columns
+python badapple.py --fps 15 --width 100       # 15 FPS, max 100 columns
 python badapple.py --invert                   # Reverse black/white
 python badapple.py --video ./bad_apple.mp4    # Use an existing file
 python badapple.py --seek 60 --loop           # Start at 1:00 and repeat
@@ -35,7 +35,13 @@ python badapple.py --download-only            # Cache the PV without playing
 python badapple.py --help                     # All options
 ```
 
-The picture automatically fits the terminal size **at playback start**. The player uses two vertical video pixels per character (`▀▄█`), keeps approximately real-time playback by dropping overdue frames, and restores the terminal screen and cursor on exit. Audio is launched by `ffplay` and synchronized on a best-effort basis; exact A/V sync depends on system startup latency. For best results, use a reasonably large terminal with a monospace font.
+The picture automatically fits the terminal size **at playback start**. The player packs two vertical video pixels into each character using the upper half block (`▀`): the top pixel is drawn as the foreground color and the bottom pixel as the background color, both in 24-bit grayscale. The grayscale values produced when FFmpeg downscales the video are preserved, so edges look smooth instead of jagged. It keeps approximately real-time playback by dropping overdue frames, and restores the terminal screen and cursor on exit. Audio is launched by `ffplay` and synchronized on a best-effort basis; exact A/V sync depends on system startup latency. For best results, use a reasonably large terminal with a monospace font.
+
+## Tips
+
+- **Choppy playback?** Truecolor output sends more data than plain black-and-white. Lower the frame rate (`--fps 15`) or limit the size (`--width 80`).
+- **Sharper picture?** Reduce the terminal font size; more columns and rows mean higher resolution.
+- **Colors look wrong or garbled?** Your terminal probably lacks truecolor support. Try a modern terminal such as Windows Terminal.
 
 ## Tests
 
