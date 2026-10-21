@@ -12,6 +12,7 @@ import subprocess
 import sys
 import time
 from urllib.request import Request, urlopen
+from renderer import FrameRenderer
 
 # Public mirror of the original Niconico PV (sm8628149); media is NOT part of
 # this repository's source-code license. See NOTICE.md.
@@ -142,7 +143,7 @@ def quit_pressed() -> bool:
     return False
 
 
-def play_once(video: Path, args: argparse.Namespace) -> bool:
+def play_once(video: Path, args: argparse.Namespace, stats_reports: list[str]) -> bool:
     """Return False if the user requested an early exit."""
     columns, lines = shutil.get_terminal_size(fallback=(80, 24))
     width, height = video_dimensions(columns, lines, args.width)
@@ -158,6 +159,9 @@ def play_once(video: Path, args: argparse.Namespace) -> bool:
     ]
     decoder = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     audio = None
+    renderer = FrameRenderer(width, height, mode=args.color_mode, threshold=args.threshold, invert=args.invert)
+    render_total = io_total = decode_total = 0.0
+    written = shown = skipped = 0
     try:
         assert decoder.stdout is not None
         frame_size = width * height
@@ -189,13 +193,29 @@ def play_once(video: Path, args: argparse.Namespace) -> bool:
                 time.sleep(delay)
             elif delay < -0.15:
                 # Drop late frames to stay close to the music clock.
-                index += 1
-                frame = decoder.stdout.read(frame_size)
+                # Skip all overdue frames in a single iteration.
+                target = max(index + 1, int((time.monotonic() - start) * args.fps))
+                while index < target and len(frame) == frame_size:
+                    tick = time.perf_counter()
+                    frame = decoder.stdout.read(frame_size)
+                    decode_total += time.perf_counter() - tick
+                    index += 1
+                    skipped += 1
                 continue
-            sys.stdout.write(render_frame(frame, width, height, args.threshold, args.invert))
-            sys.stdout.flush()
+            tick = time.perf_counter()
+            output = renderer.render(frame)
+            render_total += time.perf_counter() - tick
+            tick = time.perf_counter()
+            if output:
+                sys.stdout.buffer.write(output)
+                sys.stdout.buffer.flush()
+                written += len(output)
+            io_total += time.perf_counter() - tick
+            shown += 1
             index += 1
+            tick = time.perf_counter()
             frame = decoder.stdout.read(frame_size)
+            decode_total += time.perf_counter() - tick
         decoder.wait()
         if decoder.returncode != 0:
             raise RuntimeError("FFmpeg stopped unexpectedly while decoding the video.")
@@ -206,6 +226,14 @@ def play_once(video: Path, args: argparse.Namespace) -> bool:
                 pass
         return True
     finally:
+        if args.stats:
+            stats_reports.append(
+                f"[badapple] frames={shown} dropped={skipped} "
+                f"output={written:,} bytes "
+                f"render={1000 * render_total / max(shown, 1):.2f}ms/frame "
+                f"io={1000 * io_total / max(shown, 1):.2f}ms/frame "
+                f"read={1000 * decode_total / max(index, 1):.2f}ms/frame"
+            )
         if decoder.stdout:
             decoder.stdout.close()
         if decoder.poll() is None:
@@ -233,6 +261,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--width", type=int, default=0, help="Maximum width in terminal columns")
     parser.add_argument("--threshold", type=int, default=128, help="White threshold (0-255)")
     parser.add_argument("--invert", action="store_true", help="Invert black and white")
+    parser.add_argument("--color-mode", choices=("truecolor", "gray256", "mono"),
+                        default="truecolor", help="Terminal color depth (default: truecolor)")
+    parser.add_argument("--stats", action="store_true",
+                        help="Print rendering, output, and decode timing after playback")
     parser.add_argument("--seek", type=float, default=0, help="Start at a given time in seconds")
     parser.add_argument("--loop", action="store_true", help="Repeat until q, Esc or Ctrl+C")
     args = parser.parse_args(argv)
@@ -257,10 +289,17 @@ def main(argv: list[str] | None = None) -> int:
             raise RuntimeError(f"Video not found: {video}")
         if not sys.stdout.isatty():
             raise RuntimeError("Run this player in an interactive terminal (TTY).")
-        with terminal_mode():
-            while True:
-                if not play_once(video, args) or not args.loop:
-                    break
+        stats_reports: list[str] = []
+        try:
+            with terminal_mode():
+                while True:
+                    if not play_once(video, args, stats_reports) or not args.loop:
+                        break
+        finally:
+            # Leaving terminal_mode restores the original screen before
+            # publishing the reports, including when Ctrl+C interrupts playback.
+            for report in stats_reports:
+                print(report, file=sys.stderr)
         return 0
     except KeyboardInterrupt:
         return 130
