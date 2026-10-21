@@ -52,3 +52,19 @@ python -m unittest discover -s tests -v
 ## Credits and media rights
 
 Based on the *Bad Apple!!* shadow-art PV originally published on Niconico (`sm8628149`, 2009). Music: ZUN / Alstroemeria Records (arrangement), vocals by nomico; shadow-art PV by あにら (Anira). This repository's source-code license **does not grant rights to the video or music**. See [NOTICE.md](NOTICE.md) for details.
+
+## Renderer performance
+
+The default `truecolor` mode preserves smooth grayscale. The renderer tracks
+the previous frame and updates only changed terminal-cell runs; densely changed
+rows are repainted in full. `--color-mode gray256` reduces ANSI color payload
+size; `--color-mode mono --threshold 128` uses four black/white half-block glyphs.
+The `--threshold` setting applies to `mono` mode.
+
+Run `python badapple.py --stats --no-audio` to print decoded-frame, output
+and render timing after playback. `python bench_renderer.py` compares full
+versus differential output on a synthetic moving shape without requiring FFmpeg
+or a TTY. This benchmark cannot establish real terminal FPS: emulator repaint,
+font rendering, and stdout buffering are system-dependent. To test actual
+terminal responsiveness, compare `--color-mode truecolor`, `gray256`,
+and `mono` at the same dimensions and FPS.
