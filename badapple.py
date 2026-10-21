@@ -143,7 +143,7 @@ def quit_pressed() -> bool:
     return False
 
 
-def play_once(video: Path, args: argparse.Namespace) -> bool:
+def play_once(video: Path, args: argparse.Namespace, stats_reports: list[str]) -> bool:
     """Return False if the user requested an early exit."""
     columns, lines = shutil.get_terminal_size(fallback=(80, 24))
     width, height = video_dimensions(columns, lines, args.width)
@@ -227,13 +227,12 @@ def play_once(video: Path, args: argparse.Namespace) -> bool:
         return True
     finally:
         if args.stats:
-            print(
-                f"\n[badapple] frames={shown} dropped={skipped} "
+            stats_reports.append(
+                f"[badapple] frames={shown} dropped={skipped} "
                 f"output={written:,} bytes "
                 f"render={1000 * render_total / max(shown, 1):.2f}ms/frame "
                 f"io={1000 * io_total / max(shown, 1):.2f}ms/frame "
-                f"read={1000 * decode_total / max(index, 1):.2f}ms/frame",
-                file=sys.stderr,
+                f"read={1000 * decode_total / max(index, 1):.2f}ms/frame"
             )
         if decoder.stdout:
             decoder.stdout.close()
@@ -290,10 +289,17 @@ def main(argv: list[str] | None = None) -> int:
             raise RuntimeError(f"Video not found: {video}")
         if not sys.stdout.isatty():
             raise RuntimeError("Run this player in an interactive terminal (TTY).")
-        with terminal_mode():
-            while True:
-                if not play_once(video, args) or not args.loop:
-                    break
+        stats_reports: list[str] = []
+        try:
+            with terminal_mode():
+                while True:
+                    if not play_once(video, args, stats_reports) or not args.loop:
+                        break
+        finally:
+            # Leaving terminal_mode restores the original screen before
+            # publishing the reports, including when Ctrl+C interrupts playback.
+            for report in stats_reports:
+                print(report, file=sys.stderr)
         return 0
     except KeyboardInterrupt:
         return 130
